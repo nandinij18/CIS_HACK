@@ -99,8 +99,7 @@ async function checkWebsite(url, interval_minutes) {
             content: newContent,
             description: changeDiff,
             interval_minutes: interval_minutes || 60,
-            change_type: changeType,
-            change_diff: changeDiff
+            change_type: changeType
         });
 
     } catch (error) {
