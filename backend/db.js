@@ -10,7 +10,8 @@ mongoose.connect(mongoURI)
 // Define the Schema that mirrors the old SQL Table
 const pageSchema = new mongoose.Schema({
     url: { type: String, required: true },
-    content: { type: String },
+    content: { type: String }, // Diff Descriptions
+    raw_html: { type: String }, // Hidden Raw HTML
     last_checked: { type: Date, default: Date.now },
     interval_minutes: { type: Number, default: 60 },
     change_type: { type: String, default: 'Initial' },

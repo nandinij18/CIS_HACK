@@ -77,7 +77,7 @@ async function checkWebsite(url, interval_minutes) {
         let changeDiff = '';
 
         if (lastPage) {
-            oldContent = lastPage.content;
+            oldContent = lastPage.raw_html || lastPage.content;
             const diffResult = analyzeDifference(oldContent, newContent);
             changeType = diffResult.changeType;
             changeDiff = diffResult.diffDescription;
@@ -96,7 +96,8 @@ async function checkWebsite(url, interval_minutes) {
         // Insert new version into Mongoose model
         await Page.create({
             url,
-            content: newContent,
+            content: changeDiff || newContent,
+            raw_html: newContent,
             interval_minutes: interval_minutes || 60,
             change_type: changeType,
             change_diff: changeDiff
