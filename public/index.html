@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intelligent Website Change Detection System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <header>
+        <h1 class="logo">Observer AI</h1>
+    </header>
+
+    <main>
+        <div class="glass-card">
+            <h2>Add New Monitor</h2>
+            <p style="color: #94a3b8; margin-bottom: 1.5rem;">Start tracking changes on any website automatically.</p>
+            <form id="add-url-form" class="form-group">
+                <input type="url" id="urlInput" class="form-input" placeholder="https://example.com" required>
+                <input type="number" id="intervalInput" class="form-input" placeholder="Interval (minutes)" min="1" required style="flex: 0.5;">
+                <button type="submit" class="btn btn-primary" id="start-btn">Start Monitoring</button>
+            </form>
+            <div id="status-msg" style="margin-top: 1rem; font-size: 0.9rem;"></div>
+        </div>
+
+        <div class="glass-card">
+            <h2>Active Monitors</h2>
+            <div id="loader" class="loader" style="display: none;"></div>
+            <div id="monitors-container" class="monitors-grid">
+                <!-- Monitors will be injected here via JS -->
+            </div>
+        </div>
+    </main>
+
+    <script src="./script.js"></script>
+</body>
+</html>

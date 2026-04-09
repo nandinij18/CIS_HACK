@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Version History - Observer AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <header>
+        <h1 class="logo">Observer AI</h1>
+    </header>
+
+    <main>
+        <a href="/" class="back-link">← Back to Dashboard</a>
+        <div class="glass-card">
+            <h2 id="history-title">Version History</h2>
+            <p id="history-url" style="color: #94a3b8; margin-bottom: 1.5rem; word-break: break-all;"></p>
+            
+            <div id="loader" class="loader" style="display: none;"></div>
+            <div id="history-container">
+                <!-- History items injected via JS -->
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const targetUrl = urlParams.get('url');
+            
+            if (!targetUrl) {
+                document.getElementById('history-title').innerText = "No URL specified.";
+                return;
+            }
+
+            document.getElementById('history-url').innerText = targetUrl;
+            fetchHistory(targetUrl);
+        });
+
+        async function fetchHistory(url) {
+            const loader = document.getElementById('loader');
+            const container = document.getElementById('history-container');
+            
+            loader.style.display = 'block';
+            container.innerHTML = '';
+
+            try {
+                const response = await fetch(`/api/history?url=${encodeURIComponent(url)}`);
+                const data = await response.json();
+                
+                loader.style.display = 'none';
+
+                if (!Array.isArray(data) || data.length === 0) {
+                    container.innerHTML = '<p>No history found for this URL.</p>';
+                    return;
+                }
+
+                data.forEach(item => {
+                    const date = new Date(item.last_checked).toLocaleString();
+                    const badgeClass = getBadgeClass(item.change_type);
+                    
+                    const div = document.createElement('div');
+                    div.className = 'history-item';
+                    div.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <strong>${date}</strong>
+                            <span class="badge ${badgeClass}">${item.change_type}</span>
+                        </div>
+                        <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">Interval: ${item.interval_minutes} minutes</p>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (err) {
+                loader.style.display = 'none';
+                container.innerHTML = `<p style="color:#ef4444;">Error fetching history.</p>`;
+            }
+        }
+
+        function getBadgeClass(type) {
+            if (type.includes('Major')) return 'badge-major';
+            if (type.includes('Minor')) return 'badge-minor';
+            if (type.includes('Initial')) return 'badge-initial';
+            return 'badge-none';
+        }
+    </script>
+</body>
+</html>
