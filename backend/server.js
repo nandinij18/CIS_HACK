@@ -77,7 +77,7 @@ async function checkWebsite(url, interval_minutes) {
         let changeDiff = '';
 
         if (lastPage) {
-            oldContent = lastPage.raw_html || lastPage.content;
+            oldContent = lastPage.content;
             const diffResult = analyzeDifference(oldContent, newContent);
             changeType = diffResult.changeType;
             changeDiff = diffResult.diffDescription;
@@ -96,8 +96,8 @@ async function checkWebsite(url, interval_minutes) {
         // Insert new version into Mongoose model
         await Page.create({
             url,
-            content: changeDiff || newContent,
-            raw_html: newContent,
+            content: newContent,
+            description: changeDiff,
             interval_minutes: interval_minutes || 60,
             change_type: changeType,
             change_diff: changeDiff
@@ -174,7 +174,7 @@ app.get('/api/history', async (req, res) => {
 
     try {
         const rows = await Page.find({ url })
-            .select('url last_checked change_type interval_minutes change_diff')
+            .select('url last_checked change_type interval_minutes change_diff description')
             .sort({ last_checked: -1 });
         res.json(rows);
     } catch (error) {

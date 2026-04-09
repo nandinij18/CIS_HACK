@@ -67,8 +67,9 @@
                     div.className = 'history-item';
                     
                     let diffBlock = '';
-                    if (item.change_diff) {
-                        diffBlock = `<pre style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; font-size: 0.8rem; overflow-x: auto; max-height: 200px; overflow-y: auto; color: #94a3b8; margin-top: 1rem; white-space: pre-wrap; word-break: break-word;">${item.change_diff.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
+                    if (item.description || item.change_diff) {
+                        const diffText = item.description || item.change_diff;
+                        diffBlock = `<pre style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; font-size: 0.8rem; overflow-x: auto; max-height: 200px; overflow-y: auto; color: #94a3b8; margin-top: 1rem; white-space: pre-wrap; word-break: break-word;">${diffText.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
                     }
 
                     div.innerHTML = `
