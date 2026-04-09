@@ -1,5 +1,10 @@
+let monitorStates = {};
+
 document.addEventListener('DOMContentLoaded', () => {
     fetchActiveMonitors();
+    
+    // Poll every 15 seconds for live background updates
+    setInterval(fetchActiveMonitors, 15000);
 
     // Handle form submission
     document.getElementById('add-url-form').addEventListener('submit', async (e) => {
@@ -66,6 +71,14 @@ async function fetchActiveMonitors() {
 
         data.forEach(item => {
             const date = new Date(item.last_checked).toLocaleString();
+            
+            // Trigger Alert if state changed in background
+            const prev = monitorStates[item.url];
+            if (prev && prev.last_checked !== item.last_checked && item.change_type.includes('Change') && !item.change_type.includes('No Change')) {
+                alert(`🚨 ALERT: A ${item.change_type} was just detected on ${item.url}!`);
+            }
+            monitorStates[item.url] = item;
+
             let badgeClass = 'badge-none';
             if (item.change_type.includes('Major')) badgeClass = 'badge-major';
             else if (item.change_type.includes('Minor')) badgeClass = 'badge-minor';

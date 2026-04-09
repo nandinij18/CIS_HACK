@@ -30,10 +30,15 @@ function analyzeDifference(oldText, newText) {
     
     let changedChars = 0;
     let totalChars = oldText.length || 1;
+    let diffDescription = '';
     
     changes.forEach((part) => {
         if (part.added || part.removed) {
             changedChars += part.value.length;
+            const prefix = part.added ? '[+ ADDED]' : '[- REMOVED]';
+            let snippet = part.value.trim().substring(0, 150).replace(/\n/g, " ");
+            if (part.value.length > 150) snippet += '...';
+            if (snippet.length > 0) diffDescription += `${prefix} ${snippet}\n`;
         }
     });
 
@@ -48,7 +53,7 @@ function analyzeDifference(oldText, newText) {
         changeType = 'Minor Change';
     }
 
-    return { changeType, diffPercentage, changes };
+    return { changeType, diffPercentage, changes, diffDescription };
 }
 
 /**
@@ -69,11 +74,13 @@ async function checkWebsite(url, interval_minutes) {
 
         let oldContent = '';
         let changeType = 'Initial';
+        let changeDiff = '';
 
         if (lastPage) {
             oldContent = lastPage.content;
             const diffResult = analyzeDifference(oldContent, newContent);
             changeType = diffResult.changeType;
+            changeDiff = diffResult.diffDescription;
 
             if (changeType === 'Major Change') {
                 console.log(`[ALERT] Major Change Detected for ${url}!`);
@@ -91,7 +98,8 @@ async function checkWebsite(url, interval_minutes) {
             url,
             content: newContent,
             interval_minutes: interval_minutes || 60,
-            change_type: changeType
+            change_type: changeType,
+            change_diff: changeDiff
         });
 
     } catch (error) {
@@ -165,7 +173,7 @@ app.get('/api/history', async (req, res) => {
 
     try {
         const rows = await Page.find({ url })
-            .select('url last_checked change_type interval_minutes')
+            .select('url last_checked change_type interval_minutes change_diff')
             .sort({ last_checked: -1 });
         res.json(rows);
     } catch (error) {
