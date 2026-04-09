@@ -3,9 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const axios = require('axios');
-const util = require('util');
 const Diff = require('diff');
-const db = require('./db'); // Require our database connection
+const Page = require('./db'); // Require our Mongoose model
 
 // Ignore self-signed/proxy SSL errors
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -15,7 +14,6 @@ const PORT = process.env.PORT || 8080;
 
 app.use(cors());
 app.use(express.json());
-// Serve frontend static files
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Store active cron timers in memory (so we can clear them if needed)
@@ -28,7 +26,6 @@ function analyzeDifference(oldText, newText) {
     if (!oldText) oldText = '';
     if (!newText) newText = '';
     
-    // Using string length or simple diffing. Let's use the diff library to count changes
     const changes = Diff.diffChars(oldText, newText);
     
     let changedChars = 0;
@@ -51,41 +48,33 @@ function analyzeDifference(oldText, newText) {
         changeType = 'Minor Change';
     }
 
-    return {
-        changeType,
-        diffPercentage,
-        changes
-    };
+    return { changeType, diffPercentage, changes };
 }
 
 /**
- * Checks a specific URL and saves a new version to the database
+ * Checks a specific URL and saves a new version to MongoDB
  */
 async function checkWebsite(url, interval_minutes) {
     console.log(`[Scheduler] Checking URL: ${url}`);
     try {
-        // Fetch HTML content
+        // Fetch HTML content with timeout and user-agent
         const response = await axios.get(url, { 
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36' },
-            timeout: 10000 // Force it to give up after 10 seconds
+            timeout: 10000 
         });
         const newContent = response.data;
 
-        // Fetch last checked version from DB
-        const [rows] = await db.execute(
-            'SELECT * FROM pages WHERE url = ? ORDER BY last_checked DESC LIMIT 1',
-            [url]
-        );
+        // Fetch last checked version from MongoDB
+        const lastPage = await Page.findOne({ url }).sort({ last_checked: -1 });
 
         let oldContent = '';
         let changeType = 'Initial';
 
-        if (rows.length > 0) {
-            oldContent = rows[0].content;
+        if (lastPage) {
+            oldContent = lastPage.content;
             const diffResult = analyzeDifference(oldContent, newContent);
             changeType = diffResult.changeType;
 
-            // Simple console alert
             if (changeType === 'Major Change') {
                 console.log(`[ALERT] Major Change Detected for ${url}!`);
             } else if (changeType === 'Minor Change') {
@@ -97,20 +86,23 @@ async function checkWebsite(url, interval_minutes) {
             console.log(`[INFO] First time checking ${url}. Marked as Initial.`);
         }
 
-        // Insert new version into history table
-        await db.execute(
-            'INSERT INTO pages (url, content, last_checked, interval_minutes, change_type) VALUES (?, ?, NOW(), ?, ?)',
-            [url, newContent, interval_minutes || 60, changeType]
-        );
+        // Insert new version into Mongoose model
+        await Page.create({
+            url,
+            content: newContent,
+            interval_minutes: interval_minutes || 60,
+            change_type: changeType
+        });
 
     } catch (error) {
         console.error(`[Error] Failed to check ${url}:`, error.message);
         
-        // Log the error nicely in the DB history
-        await db.execute(
-            'INSERT INTO pages (url, content, last_checked, interval_minutes, change_type) VALUES (?, ?, NOW(), ?, ?)',
-            [url, `Error: ${error.message}`, interval_minutes || 60, 'Error']
-        );
+        await Page.create({
+            url,
+            content: `Error: ${error.message}`,
+            interval_minutes: interval_minutes || 60,
+            change_type: 'Error'
+        });
     }
 }
 
@@ -125,10 +117,8 @@ app.post('/api/add-url', async (req, res) => {
     }
 
     try {
-        // First, explicitly check it now
         await checkWebsite(url, parseInt(interval, 10));
 
-        // Schedule periodic checks in memory
         const intervalMs = parseInt(interval, 10) * 60 * 1000;
         
         if (activeTimers[url]) {
@@ -143,24 +133,26 @@ app.post('/api/add-url', async (req, res) => {
 });
 
 /**
- * Fetch all URLs currently being monitored with their latest status
+ * Fetch all URLs currently being monitored using Mongo Aggregation
  */
 app.get('/api/monitors', async (req, res) => {
     try {
-        const query = `
-            SELECT p1.id, p1.url, p1.last_checked, p1.change_type, p1.interval_minutes
-            FROM pages p1
-            INNER JOIN (
-                SELECT url, MAX(last_checked) as max_date
-                FROM pages
-                GROUP BY url
-            ) p2 ON p1.url = p2.url AND p1.last_checked = p2.max_date
-            ORDER BY p1.last_checked DESC
-        `;
-        const [rows] = await db.execute(query);
+        const rows = await Page.aggregate([
+            { $sort: { last_checked: -1 } },
+            { 
+                $group: {
+                    _id: "$url",
+                    url: { $first: "$url" },
+                    last_checked: { $first: "$last_checked" },
+                    change_type: { $first: "$change_type" },
+                    interval_minutes: { $first: "$interval_minutes" }
+                }
+            },
+            { $sort: { last_checked: -1 } }
+        ]);
         res.json(rows);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch monitors.' });
+        res.status(500).json({ error: 'Failed to fetch monitors.', details: error.message });
     }
 });
 
@@ -169,15 +161,12 @@ app.get('/api/monitors', async (req, res) => {
  */
 app.get('/api/history', async (req, res) => {
     const url = req.query.url;
-    if (!url) {
-        return res.status(400).json({ error: 'URL parameter is required.' });
-    }
+    if (!url) return res.status(400).json({ error: 'URL parameter is required.' });
 
     try {
-        const [rows] = await db.execute(
-            'SELECT id, url, last_checked, change_type, interval_minutes FROM pages WHERE url = ? ORDER BY last_checked DESC',
-            [url]
-        );
+        const rows = await Page.find({ url })
+            .select('url last_checked change_type interval_minutes')
+            .sort({ last_checked: -1 });
         res.json(rows);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch history.' });
@@ -192,9 +181,8 @@ app.post('/api/check', async (req, res) => {
     if (!url) return res.status(400).json({ error: 'URL parameter is required.' });
 
     try {
-        // Find interval
-        const [rows] = await db.execute('SELECT interval_minutes FROM pages WHERE url = ? LIMIT 1', [url]);
-        const interval = rows.length ? rows[0].interval_minutes : 60;
+        const page = await Page.findOne({ url }).select('interval_minutes');
+        const interval = page ? page.interval_minutes : 60;
         
         await checkWebsite(url, interval);
         res.json({ message: 'Check complete!' });
@@ -204,22 +192,30 @@ app.post('/api/check', async (req, res) => {
 });
 
 /**
- * Boot up active schedules on restart
+ * Boot up active schedules on restart using Mongo Aggregation
  */
 async function restoreSchedules() {
     try {
-        const [rows] = await db.execute('SELECT url, interval_minutes FROM pages GROUP BY url, interval_minutes');
-        rows.forEach(row => {
-            const intervalMs = row.interval_minutes * 60 * 1000;
-            activeTimers[row.url] = setInterval(() => checkWebsite(row.url, row.interval_minutes), intervalMs);
-            console.log(`[Init] Restored schedule for ${row.url} every ${row.interval_minutes} mins`);
+        const pages = await Page.aggregate([
+            { $group: { _id: "$url", interval_minutes: { $first: "$interval_minutes" } } }
+        ]);
+        
+        pages.forEach(row => {
+            if (!row._id) return;
+            const url = row._id;
+            const interval_minutes = row.interval_minutes || 60;
+            const intervalMs = interval_minutes * 60 * 1000;
+            
+            activeTimers[url] = setInterval(() => checkWebsite(url, interval_minutes), intervalMs);
+            console.log(`[Init] Restored schedule for ${url} every ${interval_minutes} mins`);
         });
     } catch (err) {
-        console.error('[Init] Failed to load schedules from DB. Does the table exist?', err.message);
+        console.error('[Init] Failed to load schedules from MongoDB.', err.message);
     }
 }
 
 app.listen(PORT, async () => {
     console.log(`Server is running at http://localhost:${PORT}`);
-    await restoreSchedules();
+    // Wait slightly to ensure DB connection is active before restoring
+    setTimeout(restoreSchedules, 2000); 
 });
